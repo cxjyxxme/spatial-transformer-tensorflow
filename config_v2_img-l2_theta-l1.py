@@ -4,13 +4,12 @@ import numpy as np
 
 height = 288
 width = 512
-batch_size = 64
-initial_learning_rate = 1e-3
-theta_mul = 40000
-regu_mul = 30
-img_mul = 5000
-training_iter = 40000
-step_size = 5000
+batch_size = 32
+initial_learning_rate = 1e-4
+theta_mul = 300
+regu_mul = 10000
+training_iter = 100000
+step_size = 30000
 train_data_size = 4000
 test_data_size = 600
 crop_rate = 0.8

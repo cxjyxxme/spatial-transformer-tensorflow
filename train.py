@@ -20,7 +20,7 @@ import cv2
 from resnet import *
 import get_data
 from config import *
-
+import time
 '''
 # %% Load data
 mnist_cluttered = np.load('./data/mnist_sequence1_sample_5distortions5x5.npz')
@@ -38,6 +38,31 @@ Y_valid = dense_to_one_hot(y_valid, n_classes=10)
 Y_test = dense_to_one_hot(y_test, n_classes=10)
 '''
 
+def get_theta_loss(theta):
+    theta = tf.reshape(theta, (-1, 3, 3))
+    theta = tf.cast(theta, 'float32')
+    temp = tf.slice(theta, [0, 2, 2], [-1, 1, 1])
+    theta = tf.div(theta, temp, name='after')
+
+    d = crop_rate
+    target = tf.convert_to_tensor(np.array(  [[-d, d, -d, d], [-d, -d, d, d]]))
+    target = tf.cast(target, 'float32')
+    target = tf.expand_dims(target, 0)
+    target = tf.reshape(target, [-1])
+    target = tf.tile(target, tf.stack([batch_size]))
+    target = tf.reshape(target, tf.stack([batch_size, 2, -1]))
+
+    grid = tf.convert_to_tensor(np.array([[-1, 1, -1, 1], [-1, -1, 1, 1], [1, 1, 1, 1]]))
+    grid = tf.cast(grid, 'float32')
+    grid = tf.expand_dims(grid, 0)
+    grid = tf.reshape(grid, [-1])
+    grid = tf.tile(grid, tf.stack([batch_size]))
+    grid = tf.reshape(grid, tf.stack([batch_size, 3, -1]))
+
+    T_g = tf.matmul(theta, grid)
+    output = tf.slice(T_g, [0, 0, 0], [-1, 2, -1])
+    return tf.nn.l2_loss(output - target) / batch_size / 4
+    
 with tf.name_scope('input'):
 	# %% Since x is currently [batch, height*width], we need to reshape to a
 	# 4-D tensor to use it in a convolutional graph.  If one component of
@@ -73,21 +98,24 @@ with tf.variable_scope('fc'):
     theta = output_layer(global_pool, 8)
     theta = tf.concat([theta, tf.ones([x_batch_size, 1], tf.float32)], 1)
 
-eye_m = tf.reshape(tf.eye(3, batch_shape=[x_batch_size]), [x_batch_size, 9])
-theta_loss = tf.nn.l2_loss(theta - eye_m)
+with tf.name_scope('theta_loss'):
+    theta_loss = get_theta_loss(theta)
 regu_loss = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
 regu_loss = tf.add_n(regu_loss)
 out_size = (height, width)
 h_trans = transformer(x, theta, out_size)
 tf.add_to_collection('output', h_trans)
 tf.summary.image('result', h_trans)
-img_loss = tf.nn.l2_loss(h_trans - y)
-total_loss = theta_loss * theta_mul + img_loss + regu_loss * regu_mul
+#img_loss = tf.nn.l2_loss(h_trans - y)
+img_loss = tf.reduce_mean(tf.abs(h_trans - y))
+tf.summary.image('error', tf.abs(h_trans - y))
+total_loss = theta_loss * theta_mul + img_loss * img_mul + regu_loss * regu_mul
+#total_loss = theta_loss
 loss_displayer = tf.placeholder(tf.float32)
 with tf.name_scope('loss'):
     tf.summary.scalar('tot_loss',total_loss)
     tf.summary.scalar('theta_loss',theta_loss * theta_mul)
-    tf.summary.scalar('img_loss',img_loss)
+    tf.summary.scalar('img_loss',img_loss * img_mul)
     tf.summary.scalar('regu_loss',regu_loss * regu_mul)
 
 with tf.name_scope('test_loss'):
@@ -96,20 +124,21 @@ with tf.name_scope('test_loss'):
 global_step = tf.Variable(0, trainable=False)
 learning_rate = tf.train.exponential_decay(initial_learning_rate,
                                            global_step=global_step,
-                                           decay_steps=step_size,decay_rate=0.0005, staircase=True)
+                                           decay_steps=step_size,decay_rate=0.1, staircase=True)
 opt = tf.train.AdamOptimizer(learning_rate)
 optimizer = opt.minimize(total_loss, global_step=global_step)
 
 
-data_x, data_y = get_data.read_and_decode("data/train.tfrecords", int(training_iter * batch_size / train_data_size) + 2)
-test_x, test_y = get_data.read_and_decode("data/test.tfrecords", int(training_iter * batch_size * test_batches / test_data_size / test_freq) + 2)
+with tf.name_scope('datas'):
+    data_x, data_y = get_data.read_and_decode("data/train.tfrecords", int(training_iter * batch_size / train_data_size) + 2)
+    test_x, test_y = get_data.read_and_decode("data/test.tfrecords", int(training_iter * batch_size * test_batches / test_data_size / test_freq) + 2)
 
-x_batch, y_batch = tf.train.shuffle_batch([data_x, data_y],
-                                            batch_size=batch_size, capacity=2000,
-                                            min_after_dequeue=1000)
-test_x_batch, test_y_batch = tf.train.shuffle_batch([test_x, test_y],
-                                            batch_size=batch_size, capacity=2000,
-                                            min_after_dequeue=1000)
+    x_batch, y_batch = tf.train.shuffle_batch([data_x, data_y],
+                                                batch_size=batch_size, capacity=1000,
+                                                min_after_dequeue=800, num_threads=2)
+    test_x_batch, test_y_batch = tf.train.shuffle_batch([test_x, test_y],
+                                                batch_size=batch_size, capacity=1000,
+                                                min_after_dequeue=800, num_threads=2)
 '''
 with tf.variable_scope('SpatialTransformer', reuse=True):
     with tf.variable_scope('_transform', reuse=True):
@@ -123,13 +152,17 @@ threads = tf.train.start_queue_runners(sess=sess)
 merged = tf.summary.merge_all()
 test_merged = tf.summary.merge_all("test")
 writer = tf.summary.FileWriter("log", sess.graph)
-
 saver = tf.train.Saver()
 
+time_start = time.time()
+tot_time = 0
 
 for i in range(training_iter):
     batch_xs, batch_ys = sess.run([x_batch, y_batch])
     if i % disp_freq == 0:
+        print('time:' + str(tot_time) + 's')
+        tot_time = 0
+        time_start = time.time()
         t_loss, loss, summary = sess.run([theta_loss, total_loss, merged],
                         feed_dict={
                             x_tensor: batch_xs,
@@ -139,6 +172,8 @@ for i in range(training_iter):
         print('Iteration: ' + str(i) + ' Loss: ' + str(loss) + ' ThetaLoss: ' + str(t_loss*theta_mul))
         lr = sess.run(learning_rate)
         print(lr)
+        time_end = time.time()
+        print('disp time:' + str(time_end - time_start) + 's')
     if i % test_freq == 0:
         sum_test_loss = 0.0
         for j in range(test_batches):
@@ -157,8 +192,10 @@ for i in range(training_iter):
                 })
         writer.add_summary(summary, i)
     if i % save_freq == 0:
-
         saver.save(sess, 'models/model', global_step=i)
+    time_end = time.time()
+    tot_time += time_end - time_start
     sess.run(optimizer, feed_dict={
         x_tensor: batch_xs, y: batch_ys})   
+    time_start = time.time()
 
