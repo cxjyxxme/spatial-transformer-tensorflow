@@ -4,7 +4,7 @@ import numpy as np
 
 height = 288
 width = 512
-batch_size = 64
+batch_size = 100000
 initial_learning_rate = 1e-3
 theta_mul = 40000
 regu_mul = 30

@@ -41,21 +41,26 @@ Y_test = dense_to_one_hot(y_test, n_classes=10)
 def get_theta_loss(theta):
     theta = tf.reshape(theta, (-1, 3, 3))
     theta = tf.cast(theta, 'float32')
-    temp = tf.slice(theta, [0, 2, 2], [-1, 1, 1])
-    theta = tf.div(theta, temp, name='after')
 
     d = crop_rate
+    '''
     target = tf.convert_to_tensor(np.array(  [[-d, d, -d, d], [-d, -d, d, d]]))
     target = tf.cast(target, 'float32')
     target = tf.expand_dims(target, 0)
     target = tf.reshape(target, [-1])
+    '''
+    target = tf.constant([-d, d, -d, d, -d, -d, d, d], shape=[8], dtype=tf.float32)
     target = tf.tile(target, tf.stack([batch_size]))
     target = tf.reshape(target, tf.stack([batch_size, 2, -1]))
 
+    '''
     grid = tf.convert_to_tensor(np.array([[-1, 1, -1, 1], [-1, -1, 1, 1], [1, 1, 1, 1]]))
     grid = tf.cast(grid, 'float32')
     grid = tf.expand_dims(grid, 0)
     grid = tf.reshape(grid, [-1])
+    '''
+
+    grid = tf.constant([-1, 1, -1, 1, -1, -1, 1, 1, 1, 1, 1, 1], shape=[12], dtype=tf.float32)
     grid = tf.tile(grid, tf.stack([batch_size]))
     grid = tf.reshape(grid, tf.stack([batch_size, 3, -1]))
 
@@ -134,11 +139,11 @@ with tf.name_scope('datas'):
     test_x, test_y = get_data.read_and_decode("data/test.tfrecords", int(training_iter * batch_size * test_batches / test_data_size / test_freq) + 2)
 
     x_batch, y_batch = tf.train.shuffle_batch([data_x, data_y],
-                                                batch_size=batch_size, capacity=1000,
-                                                min_after_dequeue=800, num_threads=2)
+                                                batch_size=batch_size, capacity=1500,
+                                                min_after_dequeue=1200, num_threads=2)
     test_x_batch, test_y_batch = tf.train.shuffle_batch([test_x, test_y],
-                                                batch_size=batch_size, capacity=1000,
-                                                min_after_dequeue=800, num_threads=2)
+                                                batch_size=batch_size, capacity=1500,
+                                                min_after_dequeue=1200)
 '''
 with tf.variable_scope('SpatialTransformer', reuse=True):
     with tf.variable_scope('_transform', reuse=True):
