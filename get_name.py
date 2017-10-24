@@ -153,65 +153,15 @@ with tf.variable_scope('SpatialTransformer', reuse=True):
 '''
 merged = tf.summary.merge_all()
 test_merged = tf.summary.merge_all("test")
-saver = tf.train.Saver()
-sv = tf.train.Supervisor(logdir='log', save_summaries_secs=0, saver=None)
-with sv.managed_session(config=tf.ConfigProto(gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.95))) as sess:
-    #sess = tf.Session()
-    #sess.run(tf.initialize_all_variables())
-    #sess.run(tf.initialize_local_variables())
-    threads = tf.train.start_queue_runners(sess=sess)
-    #writer = tf.summary.FileWriter("log", sess.graph)
-
-    time_start = time.time()
-    tot_time = 0
-
-    for i in range(training_iter):
-        batch_xs, batch_ys = sess.run([x_batch, y_batch])
-        if (i > no_theta_iter):
-            use_theta = 0
-        else:
-            use_theta = 1
-        if i % disp_freq == 0:
-            print('time:' + str(tot_time) + 's')
-            tot_time = 0
-            time_start = time.time()
-            t_loss, loss, summary = sess.run([theta_loss, total_loss, merged],
-                            feed_dict={
-                                x_tensor: batch_xs,
-                                y: batch_ys,
-                                use_theta_loss: use_theta
-                            })
-            #writer.add_summary(summary, i)
-            sv.summary_writer.add_summary(summary, i)
-            print('Iteration: ' + str(i) + ' Loss: ' + str(loss) + ' ThetaLoss: ' + str(t_loss*theta_mul))
-            lr = sess.run(learning_rate)
-            print(lr)
-            time_end = time.time()
-            print('disp time:' + str(time_end - time_start) + 's')
-        if i % test_freq == 0:
-            sum_test_loss = 0.0
-            for j in range(test_batches):
-                test_batch_xs, test_batch_ys = sess.run([test_x_batch, test_y_batch])
-                loss = sess.run(total_loss,
-                            feed_dict={
-                                x_tensor: test_batch_xs,
-                                y: test_batch_ys,
-                                use_theta_loss: use_theta
-                            })
-                sum_test_loss += loss
-            sum_test_loss /= test_batches
-            print("Test Loss: " + str(sum_test_loss))
-            summary = sess.run(test_merged,
-                    feed_dict={
-                        loss_displayer: sum_test_loss
-                    })
-            #writer.add_summary(summary, i)
-            sv.summary_writer.add_summary(summary, i)
-        if i % save_freq == 0:
-            saver.save(sess, 'models/model', global_step=i)
-        time_end = time.time()
-        tot_time += time_end - time_start
-        sess.run(optimizer, feed_dict={
-            x_tensor: batch_xs, y: batch_ys, use_theta_loss: use_theta})   
-        time_start = time.time()
-
+print x_tensor.name
+print x_batch.name
+print y_batch.name
+print theta_loss.name
+print total_loss.name
+print merged.name
+print y.name
+print use_theta_loss.name
+print test_x_batch.name
+print test_y_batch.name
+print test_merged.name
+print loss_displayer.name

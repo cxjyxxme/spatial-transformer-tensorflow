@@ -4,17 +4,16 @@ import numpy as np
 
 height = 288
 width = 512
-batch_size = 100000
-initial_learning_rate = 1e-3
-theta_mul = 40000
+batch_size = 20
+initial_learning_rate = 1e-5
+theta_mul = 400
 regu_mul = 30
-img_mul = 5000
-training_iter = 40000
-step_size = 5000
+img_mul = 1
+training_iter = 100000
+step_size = 30000
 train_data_size = 4000
 test_data_size = 600
 crop_rate = 0.8
-batch_size = 20
 before_ch = 7
 after_ch = 7
 tot_ch = before_ch + after_ch + 1
@@ -23,6 +22,7 @@ random_crop_rate = 0.9
 disp_freq = 50
 test_freq = 500
 save_freq = 1000
+no_theta_iter = 100000
 
 def cvt_img2train(img, crop_rate = 1):
     img = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2GRAY))

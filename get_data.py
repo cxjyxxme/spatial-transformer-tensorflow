@@ -7,10 +7,12 @@ def warp_img(image, seed):
     image = tf.image.random_brightness(image, max_delta=32./255., seed = seed)
     #image = tf.image.random_saturation(image, lower=0.5, upper=1.5, seed = seed)
     #image = tf.image.random_hue(image, max_delta=0.2, seed = seed)
+    
     h = int(height / random_crop_rate)
     w = int(width / random_crop_rate)
     image = tf.image.resize_images(image, (h, w), method=seed % 4)
     image = tf.random_crop(image, (height, width, 1), seed = seed)
+    
     image = tf.image.random_contrast(image, lower=0.5, upper=1.5, seed = seed)
     image = tf.image.random_flip_left_right(image, seed = seed)
     noise = np.random.normal(0,0.05,image.shape)

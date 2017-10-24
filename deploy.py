@@ -7,7 +7,7 @@ import time
 
 sess = tf.Session()
 
-model_name = 'model-4000'
+model_name = 'model-9000'
 new_saver = tf.train.import_meta_graph('models/' + model_name + '.meta')
 new_saver.restore(sess, 'models/' + model_name)
 graph = tf.get_default_graph()
@@ -15,13 +15,18 @@ x_tensor = graph.get_operation_by_name('input/x_tensor').outputs[0]
 output = tf.get_collection('output')[0]
 
 
-list_f = open('data_video/train_list', 'rw+')
+list_f = open('data_video/test_list', 'rw+')
 temp = list_f.read()
 video_list = temp.split('\n')
 
+list_f = open('data_video/train_list', 'rw+')
+temp = list_f.read()
+video_list.extend(temp.split('\n'))
+
 for video_name in video_list:
     if (video_name == ""):
-        break
+        continue
+    print(video_name)
     unstable_cap = cv2.VideoCapture('data_video/unstable/' + video_name)  
     fps = unstable_cap.get(cv2.cv.CV_CAP_PROP_FPS)  
     videoWriter = cv2.VideoWriter('data_video/output/' + video_name, 
@@ -29,7 +34,7 @@ for video_name in video_list:
     before_frames = []
     after_frames = []
     print(video_name)
-    '''
+    #'''
     ret, frame = unstable_cap.read()
     for i in range(before_ch):
         before_frames.append(cvt_img2train(frame, crop_rate))
@@ -55,7 +60,7 @@ for video_name in video_list:
         ret, frame = unstable_cap.read()
         after_frames.append(cvt_img2train(frame, 1))
     #debug
-
+    '''
    
     len = 0
     while(True):
