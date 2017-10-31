@@ -12,7 +12,11 @@ for dn in data_names:
     list_f = open('data_video/' + dn + '_list', 'rw+')
     temp = list_f.read()
     video_list = temp.split('\n')
-    writer = tf.python_io.TFRecordWriter("data/" + dn + ".tfrecords")
+
+    record_num = 0
+    file_num = 0
+    file_list = str(file_num) + ".tfrecords"
+    writer = tf.python_io.TFRecordWriter("data/" + dn + "/" + str(file_num) + ".tfrecords")
 
     for video_name in video_list:
         if (video_name == ""):
@@ -37,6 +41,8 @@ for dn in data_names:
             length += 1
             if (length % 10 == 0):
                 print(length)
+            #if (length == 30):
+            #    break
             stable = stable_frames[0]
             for i in range(1, before_ch + 2):
                 stable = np.concatenate((stable, stable_frames[i]), axis=3)
@@ -67,7 +73,15 @@ for dn in data_names:
                 "unstable": tf.train.Feature(float_list=tf.train.FloatList(value=unstable)),
                 "flow": tf.train.Feature(float_list=tf.train.FloatList(value=flow))
             }))
+
             writer.write(example.SerializeToString())
+            record_num += 1
+            if (record_num == tfrecord_item_num):
+                record_num = 0
+                file_num += 1
+                writer.close()
+                file_list += " " + str(file_num) + ".tfrecords"
+                writer = tf.python_io.TFRecordWriter("data/" + dn + "/" + str(file_num) + ".tfrecords")
 
             ret, frame_stable = stable_cap.read()  
             ret, frame_unstable = unstable_cap.read()
@@ -80,3 +94,6 @@ for dn in data_names:
         stable_cap.release()  
         unstable_cap.release()  
     writer.close()
+    file_object = open("data/" + dn + "/list.txt", 'w')
+    file_object.write(file_list)
+    file_object.close( )

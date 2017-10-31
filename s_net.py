@@ -54,17 +54,18 @@ def inference_stable_net(reuse):
             
             for i in range(tot_ch):
                 temp = tf.slice(x_tensor, [0, 0, 0, i], [-1, -1, -1, 1])
-                tf.summary.image('x' + str(i), temp)
+                #tf.summary.image('x' + str(i), temp)
 
         with tf.name_scope('label'):
             y = tf.placeholder(tf.float32, [None, height, width, 1])
             x4 = tf.slice(y, [0, 0, 0, 0], [-1, -1, -1, 1])
-            tf.summary.image('label', x4)
+            #tf.summary.image('label', x4)
 
         with tf.variable_scope('resnet', reuse=reuse): 
-            config = {'stage_sizes' : [3, 4, 23], 'channel_params' : [  {'kernel_sizes':[1, 3, 1], 'channel_sizes':[64, 64, 256]}, 
+            config = {'stage_sizes' : [3, 4, 6, 3], 'channel_params' : [{'kernel_sizes':[1, 3, 1], 'channel_sizes':[64, 64, 256]}, 
                                                                         {'kernel_sizes':[1, 3, 1], 'channel_sizes':[128, 128, 512]}, 
-                                                                        {'kernel_sizes':[1, 3, 1], 'channel_sizes':[256, 256, 1024]}]}
+                                                                        {'kernel_sizes':[1, 3, 1], 'channel_sizes':[256, 256, 1024]},
+                                                                        {'kernel_sizes':[1, 3, 1], 'channel_sizes':[512, 512, 2048]}]}
             resnet = inference(x_tensor, tot_ch, config)
 
         with tf.variable_scope('fc', reuse=reuse):
@@ -82,11 +83,12 @@ def inference_stable_net(reuse):
         regu_loss = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
         regu_loss = tf.add_n(regu_loss)
         out_size = (height, width)
-        h_trans = transformer(x, theta, out_size)
+        h_trans, black_pix = transformer(x, theta, out_size)
+        black_pix_loss = tf.nn.l2_loss(black_pix) / batch_size
         tf.add_to_collection('output', h_trans)
-        tf.summary.image('result', h_trans)
+        #tf.summary.image('result', h_trans)
         img_loss = tf.nn.l2_loss(h_trans - y) / batch_size
-        total_loss = theta_loss * theta_mul + img_loss * img_mul + regu_loss * regu_mul
+        total_loss = theta_loss * theta_mul + img_loss * img_mul + regu_loss * regu_mul + black_pix_loss * black_mul
         '''
         with tf.name_scope('loss'):
             tf.summary.scalar('tot_loss',total_loss)
@@ -96,7 +98,9 @@ def inference_stable_net(reuse):
         '''
     ret = {}
     ret['error'] = tf.abs(h_trans - y)
+    ret['black_pix'] = black_pix
     ret['theta_loss'] = theta_loss * theta_mul
+    ret['black_loss'] = black_pix_loss * black_mul
     ret['img_loss'] = img_loss * img_mul
     ret['regu_loss'] = regu_loss * regu_mul
     ret['x_tensor'] = x_tensor

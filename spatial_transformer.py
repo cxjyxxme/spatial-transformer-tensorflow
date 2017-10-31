@@ -173,13 +173,20 @@ def transformer(U, theta, out_size, name='SpatialTransformer', **kwargs):
             x_s_flat = tf.reshape(x_s, [-1]) #/ z_s_flat
             y_s_flat = tf.reshape(y_s, [-1]) #/ z_s_flat
 
+            t_1 = tf.ones(shape = tf.shape(x_s_flat))
+            t_0 = tf.zeros(shape = tf.shape(x_s_flat))
+            cond = tf.logical_or(tf.logical_or(tf.greater(t_1 * -1, x_s_flat), tf.greater(x_s_flat, t_1)), 
+                                 tf.logical_or(tf.greater(t_1 * -1, y_s_flat), tf.greater(y_s_flat, t_1)))
+            black_pix = tf.reshape(tf.where(cond, t_1, t_0), [num_batch, -1])
+            black_pix = tf.reduce_sum(black_pix, [1])
+
             input_transformed = _interpolate(
                 input_dim, x_s_flat, y_s_flat,
                 out_size)
 
             output = tf.reshape(
                 input_transformed, tf.stack([num_batch, out_height, out_width, num_channels]))
-            return output
+            return output, black_pix
     with tf.variable_scope(name):
         #output = _transform(theta, U, out_size)
         output = _transform2(theta, U, out_size)

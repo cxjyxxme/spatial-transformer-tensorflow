@@ -9,12 +9,12 @@ start_with_stable = True
 
 sess = tf.Session()
 
-model_name = 'model-98000'
+model_name = 'model-130000'
 new_saver = tf.train.import_meta_graph('models/' + model_name + '.meta')
 new_saver.restore(sess, 'models/' + model_name)
 graph = tf.get_default_graph()
 x_tensor = graph.get_tensor_by_name('stable_net/input/x_tensor:0')
-output = graph.get_tensor_by_name('stable_net/SpatialTransformer/_transform/Reshape_5:0')
+output = graph.get_tensor_by_name('stable_net/SpatialTransformer/_transform/Reshape_6:0')
 
 list_f = open('data_video/test_list', 'rw+')
 temp = list_f.read()

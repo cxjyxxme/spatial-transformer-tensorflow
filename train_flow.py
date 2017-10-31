@@ -22,6 +22,7 @@ import get_data_flow
 from config import *
 import time
 import s_net
+from tensorflow.python.client import timeline
 
 ret1 = s_net.inference_stable_net(False)
 ret2 = s_net.inference_stable_net(True)
@@ -35,6 +36,7 @@ with tf.name_scope('temp_loss'):
     use_temp_loss = tf.placeholder(tf.float32)
     output2_aft_flow = interpolate(ret2['output'], x_flow, y_flow, (height, width))
     temp_loss = tf.nn.l2_loss(ret1['output'] - output2_aft_flow) / batch_size * use_temp_loss
+
 with tf.name_scope('errors'):
     tf.summary.image('error_temp', tf.abs(ret1['output'] - output2_aft_flow))
     tf.summary.image('error_1', ret1['error'])
@@ -51,6 +53,7 @@ with tf.name_scope('test_loss'):
 
 total_loss = ret1['total_loss'] + ret2['total_loss'] + temp_loss * temp_mul
 with tf.name_scope('train_loss'):
+    tf.summary.scalar('black_loss', ret1['black_loss'] + ret2['black_loss'])
     tf.summary.scalar('theta_loss', ret1['theta_loss'] + ret2['theta_loss'])
     tf.summary.scalar('img_loss', ret1['img_loss'] + ret2['img_loss'])
     tf.summary.scalar('regu_loss', ret1['regu_loss'] + ret2['regu_loss'])
@@ -67,25 +70,25 @@ optimizer = opt.minimize(total_loss, global_step=global_step)
 
 with tf.name_scope('datas'):
     data_x1, data_y1, data_x2, data_y2, data_flow = get_data_flow.read_and_decode(
-            "data/train.tfrecords", int(training_iter * batch_size / train_data_size) + 2)
+            "data/train/", int(training_iter * batch_size / train_data_size) + 2)
     test_x1, test_y1, test_x2, test_y2, test_flow = get_data_flow.read_and_decode(
-            "data/test.tfrecords", int(training_iter * batch_size * test_batches / test_data_size / test_freq) + 2)
+            "data/test/", int(training_iter * batch_size * test_batches / test_data_size / test_freq) + 2)
 
     x1_batch, y1_batch, x2_batch, y2_batch, flow_batch = tf.train.shuffle_batch(
                                                 [data_x1, data_y1, data_x2, data_y2, data_flow],
-                                                batch_size=batch_size, capacity=600,
-                                                min_after_dequeue=500, num_threads=2)
+                                                batch_size=batch_size, capacity=120,
+                                                min_after_dequeue=80, num_threads=10)
     test_x1_batch, test_y1_batch, test_x2_batch, test_y2_batch, test_flow_batch = tf.train.shuffle_batch(
                                                 [test_x1, test_y1, test_x2, test_y2, test_flow],
-                                                batch_size=batch_size, capacity=600,
-                                                min_after_dequeue=500)
+                                                batch_size=batch_size, capacity=120,
+                                                min_after_dequeue=80, num_threads=10)
 
 merged = tf.summary.merge_all()
 test_merged = tf.summary.merge_all("test")
 saver = tf.train.Saver()
-
 init_all = tf.initialize_all_variables()
-
+run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+run_metadata = tf.RunMetadata()
 sv = tf.train.Supervisor(logdir='log', save_summaries_secs=0, saver=None)
 with sv.managed_session(config=tf.ConfigProto(gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.95))) as sess:
     sess.run(init_all)
@@ -94,6 +97,7 @@ with sv.managed_session(config=tf.ConfigProto(gpu_options = tf.GPUOptions(per_pr
 
     time_start = time.time()
     tot_time = 0
+    tot_train_time = 0
 
     for i in range(training_iter):
         batch_x1s, batch_y1s, batch_x2s, batch_y2s, batch_flows = sess.run(
@@ -107,10 +111,13 @@ with sv.managed_session(config=tf.ConfigProto(gpu_options = tf.GPUOptions(per_pr
         else:
             use_temp = 0
         if i % disp_freq == 0:
-            print('time:' + str(tot_time) + 's')
+            print('==========================')
+            print('read data time:' + str(tot_time / disp_freq) + 's')
+            print('train time:' + str(tot_train_time / disp_freq) + 's')
+            tot_train_time = 0
             tot_time = 0
             time_start = time.time()
-            loss, summary = sess.run([total_loss, merged],
+            loss, summary, bp = sess.run([total_loss, merged, ret1['black_pix']],
                             feed_dict={
                                 ret1['x_tensor']: batch_x1s,
                                 ret1['y']: batch_y1s,
@@ -121,12 +128,14 @@ with sv.managed_session(config=tf.ConfigProto(gpu_options = tf.GPUOptions(per_pr
                                 ret2['use_theta_loss']: use_theta,
                                 use_temp_loss: use_temp
                             })
+            print(bp)
             sv.summary_writer.add_summary(summary, i)
             print('Iteration: ' + str(i) + ' Loss: ' + str(loss))
             lr = sess.run(learning_rate)
             print(lr)
             time_end = time.time()
             print('disp time:' + str(time_end - time_start) + 's')
+
         if i % test_freq == 0:
             sum_test_loss = 0.0
             for j in range(test_batches):
@@ -156,6 +165,7 @@ with sv.managed_session(config=tf.ConfigProto(gpu_options = tf.GPUOptions(per_pr
             saver.save(sess, 'models/model', global_step=i)
         time_end = time.time()
         tot_time += time_end - time_start
+        t_s = time.time()
         sess.run(optimizer,
                     feed_dict={
                         ret1['x_tensor']: batch_x1s,
@@ -167,5 +177,15 @@ with sv.managed_session(config=tf.ConfigProto(gpu_options = tf.GPUOptions(per_pr
                         ret2['use_theta_loss']: use_theta,
                         use_temp_loss: use_temp
                     })
+        t_e = time.time()
+        tot_train_time += t_e - t_s
+        '''
+        tl = timeline.Timeline(run_metadata.step_stats)
+        ctf = tl.generate_chrome_trace_format()
+        with open('timeline.json', 'w') as f:
+            f.write(ctf)
+        if (i == 200):
+            break
+        '''
         time_start = time.time()
 

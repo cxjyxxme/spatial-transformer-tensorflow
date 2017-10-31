@@ -46,8 +46,13 @@ def warp_flow(flow, para):
     flow_y = tf.cond(tf.equal(para['flip'], 0), lambda: flow_y, lambda: fliped_y)
     return tf.concat([flow_x, flow_y], axis=2)
 
-def read_and_decode(filename, num_epochs):
-    filename_queue = tf.train.string_input_producer([filename], num_epochs=num_epochs)
+def read_and_decode(filepath, num_epochs):
+    file_obj = open(filepath + 'list.txt')
+    file_txt = file_obj.read()
+    file_list = []
+    for f in file_txt.split(' '):
+        file_list.append(filepath + f)
+    filename_queue = tf.train.string_input_producer(file_list, num_epochs=num_epochs, shuffle=True)
 
     reader = tf.TFRecordReader()
     _, serialized_example = reader.read(filename_queue)
