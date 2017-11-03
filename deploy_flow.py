@@ -9,18 +9,18 @@ start_with_stable = True
 
 sess = tf.Session()
 
-model_name = 'model-130000'
-new_saver = tf.train.import_meta_graph('models/' + model_name + '.meta')
-new_saver.restore(sess, 'models/' + model_name)
+model_name = 'model-69000'
+new_saver = tf.train.import_meta_graph('models/19/' + model_name + '.meta')
+new_saver.restore(sess, 'models/19/' + model_name)
 graph = tf.get_default_graph()
 x_tensor = graph.get_tensor_by_name('stable_net/input/x_tensor:0')
 output = graph.get_tensor_by_name('stable_net/SpatialTransformer/_transform/Reshape_6:0')
 
-list_f = open('data_video/test_list', 'rw+')
+list_f = open('data_video/test_list', 'r')
 temp = list_f.read()
 video_list = temp.split('\n')
 
-list_f = open('data_video/train_list', 'rw+')
+list_f = open('data_video/train_list', 'r')
 temp = list_f.read()
 video_list.extend(temp.split('\n'))
 
@@ -29,9 +29,10 @@ for video_name in video_list:
         continue
     print(video_name)
     unstable_cap = cv2.VideoCapture('data_video/unstable/' + video_name)  
-    fps = unstable_cap.get(cv2.cv.CV_CAP_PROP_FPS)  
+    fps = unstable_cap.get(cv2.CAP_PROP_FPS)
+    print('data_video/unstable/' + video_name)
     videoWriter = cv2.VideoWriter('data_video/output/' + video_name, 
-            cv2.cv.CV_FOURCC('M', 'J', 'P', 'G'), fps, (width, height))  
+            cv2.VideoWriter_fourcc('M','J','P','G'), fps, (width, height))  
     before_frames = []
     after_frames = []
     print(video_name)

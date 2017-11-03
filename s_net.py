@@ -22,7 +22,7 @@ import get_data
 from config import *
 import time
 
-def get_theta_loss(theta):
+def get_theta_black_loss(theta):
     theta = tf.reshape(theta, (-1, 3, 3))
     theta = tf.cast(theta, 'float32')
 
@@ -37,7 +37,34 @@ def get_theta_loss(theta):
 
     T_g = tf.matmul(theta, grid)
     output = tf.slice(T_g, [0, 0, 0], [-1, 2, -1])
-    return tf.reduce_mean(tf.abs(output - target))
+    one_ = tf.ones([batch_size, 2, 4])
+    zero_ = tf.zeros([batch_size, 2, 4])
+    black_err = tf.where(tf.greater(output, one_), output - one_, zero_) + tf.where(tf.greater(one_ * -1, output), one_ * -1 - output, zero_)
+    return tf.reduce_mean(tf.abs(output - target)), tf.reshape(black_err, [batch_size, -1])
+
+def reduce_layer(input):
+    with tf.variable_scope('reduce_layer'):
+        with tf.variable_scope('conv0'):
+            conv0_ = conv_bn_relu_layer(input, [1, 1, 2048, 512], 1)
+
+        with tf.variable_scope('conv1_0'):
+            conv1_0_ = conv_bn_relu_layer2(conv0_, [1, 16, 512, 512], [1, 1])
+        with tf.variable_scope('conv2_0'):
+            conv2_0_ = conv_bn_relu_layer2(conv1_0_, [9, 1, 512, 512], [1, 1])
+
+        with tf.variable_scope('conv1_1'):
+            conv1_1_ = conv_bn_relu_layer2(conv0_, [9, 1, 512, 512], [1, 1])
+        with tf.variable_scope('conv2_1'):
+            conv2_1_ = conv_bn_relu_layer2(conv1_1_, [1, 16, 512, 512], [1, 1])
+        with tf.variable_scope('conv2'):
+            conv2_ = conv2_0_ + conv2_1_
+        with tf.variable_scope('conv3'):
+            conv3_ = conv_bn_relu_layer(conv2_, [1, 1, 512, 128], 1)
+        with tf.variable_scope('conv4'):
+            conv4_ = conv_bn_relu_layer(conv3_, [1, 1, 128, 32], 1)
+        with tf.variable_scope('fc'):
+            out = output_layer(tf.reshape(conv4_, [batch_size, 32]), 8)
+    return out
 
 def inference_stable_net(reuse):
     with tf.variable_scope('stable_net'):
@@ -72,23 +99,30 @@ def inference_stable_net(reuse):
             in_channel = resnet.get_shape().as_list()[-1]
             bn_layer = batch_normalization_layer(resnet, in_channel)
             relu_layer = tf.nn.relu(bn_layer)
-            global_pool = tf.reduce_mean(relu_layer, [1, 2])
 
+            global_pool = tf.reduce_mean(relu_layer, [1, 2])
             theta = output_layer(global_pool, 8)
+
+            #theta = reduce_layer(resnet)
             theta = tf.concat([theta, tf.ones([x_batch_size, 1], tf.float32)], 1)
 
         with tf.name_scope('theta_loss'):
             use_theta_loss = tf.placeholder(tf.float32)
-            theta_loss = get_theta_loss(theta) * use_theta_loss
+            use_black_loss = tf.placeholder(tf.float32)
+            theta_loss, black_pos = get_theta_black_loss(theta)
+            theta_loss = theta_loss * use_theta_loss
+            black_pos = black_pos * use_black_loss
         regu_loss = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
         regu_loss = tf.add_n(regu_loss)
         out_size = (height, width)
         h_trans, black_pix = transformer(x, theta, out_size)
-        black_pix_loss = tf.nn.l2_loss(black_pix) / batch_size
+        #black_pix_loss = tf.nn.l2_loss(black_pix) / batch_size
+        #black_pix_loss = tf.reduce_mean(black_pix)
+        #black_pos_loss = tf.nn.l2_loss(black_pos) / batch_size
+        black_pos_loss = tf.reduce_mean(black_pos)
         tf.add_to_collection('output', h_trans)
-        #tf.summary.image('result', h_trans)
         img_loss = tf.nn.l2_loss(h_trans - y) / batch_size
-        total_loss = theta_loss * theta_mul + img_loss * img_mul + regu_loss * regu_mul + black_pix_loss * black_mul
+        total_loss = theta_loss * theta_mul + img_loss * img_mul + regu_loss * regu_mul + black_pos_loss * black_mul
         '''
         with tf.name_scope('loss'):
             tf.summary.scalar('tot_loss',total_loss)
@@ -98,9 +132,9 @@ def inference_stable_net(reuse):
         '''
     ret = {}
     ret['error'] = tf.abs(h_trans - y)
-    ret['black_pix'] = black_pix
+    ret['black_pos'] = black_pos
     ret['theta_loss'] = theta_loss * theta_mul
-    ret['black_loss'] = black_pix_loss * black_mul
+    ret['black_loss'] = black_pos_loss * black_mul
     ret['img_loss'] = img_loss * img_mul
     ret['regu_loss'] = regu_loss * regu_mul
     ret['x_tensor'] = x_tensor
@@ -108,4 +142,5 @@ def inference_stable_net(reuse):
     ret['output'] = h_trans
     ret['total_loss'] = total_loss
     ret['use_theta_loss'] = use_theta_loss
+    ret['use_black_loss'] = use_black_loss
     return ret

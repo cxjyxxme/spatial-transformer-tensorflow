@@ -91,6 +91,23 @@ def conv_bn_relu_layer(input_layer, filter_shape, stride):
     output = tf.nn.relu(bn_layer)
     return output
 
+def conv_bn_relu_layer2(input_layer, filter_shape, stride):
+    '''
+    A helper function to conv, batch normalize and relu the input tensor sequentially
+    :param input_layer: 4D tensor
+    :param filter_shape: list. [filter_height, filter_width, filter_depth, filter_number]
+    :param stride: stride size for conv
+    :return: 4D tensor. Y = Relu(batch_normalize(conv(X)))
+    '''
+
+    out_channel = filter_shape[-1]
+    filter = create_variables(name='conv', shape=filter_shape)
+
+    conv_layer = tf.nn.conv2d(input_layer, filter, strides=[1, stride[0], stride[1], 1], padding='VALID')
+    bn_layer = batch_normalization_layer(conv_layer, out_channel)
+
+    output = tf.nn.relu(bn_layer)
+    return output
 
 def bn_relu_conv_layer(input_layer, filter_shape, stride):
     '''
@@ -165,7 +182,7 @@ def inference(input_tensor_batch, input_channel, params):
         layers.append(down_pooling)	
 
     for k in range(len(params['stage_sizes'])):
-	with tf.variable_scope('stage_%d' %k):
+        with tf.variable_scope('stage_%d' %k):
             for i in range(params['stage_sizes'][k]):
                 with tf.variable_scope('block_%d' %i):
                     first_block = (k == 0) and (i == 0)
