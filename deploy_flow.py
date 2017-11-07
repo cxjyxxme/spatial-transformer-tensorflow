@@ -9,7 +9,7 @@ start_with_stable = True
 
 sess = tf.Session()
 
-model_name = 'model-63000'
+model_name = 'model-69000'
 new_saver = tf.train.import_meta_graph(model_dir + model_name + '.meta')
 new_saver.restore(sess, model_dir + model_name)
 graph = tf.get_default_graph()
