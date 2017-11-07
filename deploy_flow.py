@@ -5,18 +5,20 @@ from PIL import Image
 import cv2
 import time
 
-start_with_stable = True
+start_with_stable = False#True
 
 sess = tf.Session()
 
-model_name = 'model-69000'
+model_name = 'model-55000'
 new_saver = tf.train.import_meta_graph(model_dir + model_name + '.meta')
 new_saver.restore(sess, model_dir + model_name)
 graph = tf.get_default_graph()
 x_tensor = graph.get_tensor_by_name('stable_net/input/x_tensor:0')
 output = graph.get_tensor_by_name('stable_net/SpatialTransformer/_transform/Reshape_6:0')
+black_pix = graph.get_tensor_by_name('stable_net/SpatialTransformer/_transform/Reshape_5:0')
 
-list_f = open('data_video/test_list_deploy', 'r')
+#list_f = open('data_video/test_list_deploy', 'r')
+list_f = open('data_video/test_list_', 'r')
 temp = list_f.read()
 video_list = temp.split('\n')
 
@@ -67,9 +69,11 @@ for video_name in video_list:
             in_x = np.concatenate((in_x, before_frames[i]), axis = 3)
         for i in range(after_ch + 1):
             in_x = np.concatenate((in_x, after_frames[i]), axis = 3)
-        img = sess.run(output, feed_dict={x_tensor:in_x})
-        img = img[0, :, :, :]
-        frame = img.reshape(1, height, width, 1)
+        img, black = sess.run([output, black_pix], feed_dict={x_tensor:in_x})
+        black = black[0, :, :]
+        img = img[0, :, :, :].reshape(height, width) #* (1 - black) + black * 0.5
+        frame = img + black * (-1)
+        frame = frame.reshape(1, height, width, 1)
         img = ((np.reshape(img, (height, width)) + 0.5) * 255).astype(np.uint8)
         img = cv2.cvtColor(img,cv2.COLOR_GRAY2BGR)
         videoWriter.write(img)

@@ -81,12 +81,12 @@ def inference_stable_net(reuse):
             
             for i in range(tot_ch):
                 temp = tf.slice(x_tensor, [0, 0, 0, i], [-1, -1, -1, 1])
-                #tf.summary.image('x' + str(i), temp)
+                tf.summary.image('x' + str(i), temp)
 
         with tf.name_scope('label'):
             y = tf.placeholder(tf.float32, [None, height, width, 1])
             x4 = tf.slice(y, [0, 0, 0, 0], [-1, -1, -1, 1])
-            #tf.summary.image('label', x4)
+            tf.summary.image('label', x4)
 
         with tf.variable_scope('resnet', reuse=reuse): 
             config = {'stage_sizes' : [3, 4, 6, 3], 'channel_params' : [{'kernel_sizes':[1, 3, 1], 'channel_sizes':[64, 64, 256]}, 
@@ -116,12 +116,16 @@ def inference_stable_net(reuse):
         regu_loss = tf.add_n(regu_loss)
         out_size = (height, width)
         h_trans, black_pix = transformer(x, theta, out_size)
-        #black_pix_loss = tf.nn.l2_loss(black_pix) / batch_size
-        #black_pix_loss = tf.reduce_mean(black_pix)
-        #black_pos_loss = tf.nn.l2_loss(black_pos) / batch_size
         black_pos_loss = tf.reduce_mean(black_pos)
         tf.add_to_collection('output', h_trans)
-        img_loss = tf.nn.l2_loss(h_trans - y) / batch_size
+        with tf.name_scope('img_loss'):
+            
+            black_pix = tf.stop_gradient(black_pix)
+            img_err = tf.reshape((h_trans - y), [batch_size, height, width]) * (1 - black_pix)
+            tf.summary.image('err', tf.expand_dims(img_err * img_err, 3))
+            img_loss = tf.reduce_sum(tf.reduce_sum(img_err * img_err, [1, 2]) / (tf.reduce_sum((1 - black_pix), [1, 2]) + 1e-8), [0]) / batch_size
+            
+            #img_loss = tf.nn.l2_loss(h_trans - y) / batch_size
         total_loss = theta_loss * theta_mul + img_loss * img_mul + regu_loss * regu_mul + black_pos_loss * black_mul
         '''
         with tf.name_scope('loss'):
@@ -133,6 +137,7 @@ def inference_stable_net(reuse):
     ret = {}
     ret['error'] = tf.abs(h_trans - y)
     ret['black_pos'] = black_pos
+    ret['black_pix'] = black_pix
     ret['theta_loss'] = theta_loss * theta_mul
     ret['black_loss'] = black_pos_loss * black_mul
     ret['img_loss'] = img_loss * img_mul

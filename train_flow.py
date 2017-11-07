@@ -39,8 +39,8 @@ with tf.name_scope('data_flow'):
 
 with tf.name_scope('temp_loss'):
     use_temp_loss = tf.placeholder(tf.float32)
-    #output2_aft_flow = interpolate(ret2['output'], x_flow, y_flow, (height, width))
-    output2_aft_flow = ret2['output']#28
+    output2_aft_flow = interpolate(ret2['output'], x_flow, y_flow, (height, width))
+    #output2_aft_flow = ret2['output']#28
     temp_loss = tf.nn.l2_loss(ret1['output'] - output2_aft_flow) / batch_size * use_temp_loss
 
 with tf.name_scope('errors'):
@@ -76,9 +76,9 @@ optimizer = opt.minimize(total_loss, global_step=global_step)
 
 with tf.name_scope('datas'):
     data_x1, data_y1, data_x2, data_y2, data_flow = get_data_flow.read_and_decode(
-            "data/train/", int(training_iter * batch_size / train_data_size) + 2)
+            data_dir + "train/", int(training_iter * batch_size / train_data_size) + 2)
     test_x1, test_y1, test_x2, test_y2, test_flow = get_data_flow.read_and_decode(
-            "data/test/", int(training_iter * batch_size * test_batches / test_data_size / test_freq) + 2)
+            data_dir + "test/", int(training_iter * batch_size * test_batches / test_data_size / test_freq) + 2)
 
     x1_batch, y1_batch, x2_batch, y2_batch, flow_batch = tf.train.shuffle_batch(
                                                 [data_x1, data_y1, data_x2, data_y2, data_flow],
