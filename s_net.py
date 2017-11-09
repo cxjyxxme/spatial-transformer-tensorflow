@@ -28,15 +28,37 @@ def get_theta_black_loss(theta):
 
     d = crop_rate
     target = tf.constant([-d, d, -d, d, -d, -d, d, d], shape=[8], dtype=tf.float32)
-    target = tf.tile(target, tf.stack([batch_size]))
-    target = tf.reshape(target, tf.stack([batch_size, 2, -1]))
+    target = tf.tile(target, [batch_size])
+    target = tf.reshape(target, [batch_size, 2, -1])
 
     grid = tf.constant([-1, 1, -1, 1, -1, -1, 1, 1, 1, 1, 1, 1], shape=[12], dtype=tf.float32)
-    grid = tf.tile(grid, tf.stack([batch_size]))
-    grid = tf.reshape(grid, tf.stack([batch_size, 3, -1]))
+    grid = tf.tile(grid, [batch_size])
+    grid = tf.reshape(grid, [batch_size, 3, -1])
 
     T_g = tf.matmul(theta, grid)
-    output = tf.slice(T_g, [0, 0, 0], [-1, 2, -1])
+
+    x_s = tf.slice(T_g, [0, 0, 0], [-1, 1, -1])
+    y_s = tf.slice(T_g, [0, 1, 0], [-1, 1, -1])
+    z_s = tf.slice(T_g, [0, 2, 0], [-1, 1, -1])
+
+    t_1 = tf.ones(shape = tf.shape(x_s), dtype=tf.float32)
+    t_0 = tf.zeros(shape = tf.shape(x_s), dtype=tf.float32)      
+
+    sign_z = tf.where(tf.greater(z_s, t_0), t_1, t_0) * 2.0 - 1.0
+    z_s = z_s + sign_z * 1e-5
+
+    #op = tf.Print(theta, [z_s], summarize=24)
+    #with tf.control_dependencies([op]):
+    x_s = tf.div(x_s, z_s)
+    y_s = tf.div(y_s, z_s)
+
+    output = tf.concat([x_s, y_s], 1)
+    
+    #op = tf.Print(theta, [x_s], summarize=24)
+    #op2 = tf.Print(theta, [y_s], summarize=24)
+    #with tf.control_dependencies([op, op2]):
+    #output = tf.slice(T_g, [0, 0, 0], [-1, 2, -1])
+    #output = T_g[:, :2, :] / T_g[:, 2, None, :]
     one_ = tf.ones([batch_size, 2, 4])
     zero_ = tf.zeros([batch_size, 2, 4])
     black_err = tf.where(tf.greater(output, one_), output - one_, zero_) + tf.where(tf.greater(one_ * -1, output), one_ * -1 - output, zero_)
@@ -119,14 +141,16 @@ def inference_stable_net(reuse):
         black_pos_loss = tf.reduce_mean(black_pos)
         tf.add_to_collection('output', h_trans)
         with tf.name_scope('img_loss'):
-            
+            black_pix = tf.reshape(black_pix, [batch_size, height, width, 1]) 
             black_pix = tf.stop_gradient(black_pix)
-            img_err = tf.reshape((h_trans - y), [batch_size, height, width]) * (1 - black_pix)
-            tf.summary.image('err', tf.expand_dims(img_err * img_err, 3))
-            img_loss = tf.reduce_sum(tf.reduce_sum(img_err * img_err, [1, 2]) / (tf.reduce_sum((1 - black_pix), [1, 2]) + 1e-8), [0]) / batch_size
+            img_err = (h_trans - y) * (1 - black_pix)
+            tf.summary.image('err', img_err * img_err)
+            img_loss = tf.reduce_sum(tf.reduce_sum(img_err * img_err, [1, 2, 3]) / (tf.reduce_sum((1 - black_pix), [1, 2, 3]) + 1e-8), [0]) / batch_size
             
             #img_loss = tf.nn.l2_loss(h_trans - y) / batch_size
-        total_loss = theta_loss * theta_mul + img_loss * img_mul + regu_loss * regu_mul + black_pos_loss * black_mul
+        use_theta_only = tf.placeholder(tf.float32)
+        total_loss = theta_loss * theta_mul + ((1 - use_theta_only) * 
+        (img_loss * img_mul + regu_loss * regu_mul + black_pos_loss * black_mul))
         '''
         with tf.name_scope('loss'):
             tf.summary.scalar('tot_loss',total_loss)
@@ -143,6 +167,7 @@ def inference_stable_net(reuse):
     ret['img_loss'] = img_loss * img_mul
     ret['regu_loss'] = regu_loss * regu_mul
     ret['x_tensor'] = x_tensor
+    ret['use_theta_only'] = use_theta_only
     ret['y'] = y
     ret['output'] = h_trans
     ret['total_loss'] = total_loss

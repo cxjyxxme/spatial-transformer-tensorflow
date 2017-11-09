@@ -8,7 +8,7 @@ import sys
 import struct
 
 data_names = ["train", "test"]
-data_path = "data4/"
+data_path = "data5/"
 for dn in data_names:
     list_f = open('data_video/' + dn + '_list', 'r+')
     temp = list_f.read()

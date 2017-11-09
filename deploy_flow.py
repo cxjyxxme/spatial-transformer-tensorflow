@@ -5,20 +5,21 @@ from PIL import Image
 import cv2
 import time
 
-start_with_stable = False#True
+start_with_stable = True
 
 sess = tf.Session()
 
-model_name = 'model-55000'
+model_name = 'model-69000'
 new_saver = tf.train.import_meta_graph(model_dir + model_name + '.meta')
 new_saver.restore(sess, model_dir + model_name)
 graph = tf.get_default_graph()
 x_tensor = graph.get_tensor_by_name('stable_net/input/x_tensor:0')
 output = graph.get_tensor_by_name('stable_net/SpatialTransformer/_transform/Reshape_6:0')
 black_pix = graph.get_tensor_by_name('stable_net/SpatialTransformer/_transform/Reshape_5:0')
+#black_pix = graph.get_tensor_by_name('stable_net/img_loss/StopGradient:0')
 
 #list_f = open('data_video/test_list_deploy', 'r')
-list_f = open('data_video/test_list_', 'r')
+list_f = open('data_video/test_list__', 'r')
 temp = list_f.read()
 video_list = temp.split('\n')
 

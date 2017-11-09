@@ -75,8 +75,9 @@ def get_rand_mask():
     T_g = tf.matmul(H, grid)
     x_s = tf.slice(T_g, [0, 0], [1, -1])
     y_s = tf.slice(T_g, [1, 0], [1, -1])
-    x_s_flat = tf.reshape(x_s, [-1])   
-    y_s_flat = tf.reshape(y_s, [-1])
+    z_s = tf.slice(T_g, [2, 0], [1, -1])
+    x_s_flat = tf.reshape(x_s / z_s, [-1])   
+    y_s_flat = tf.reshape(y_s / z_s, [-1])
 
     t_1 = tf.ones(shape = tf.shape(x_s_flat))
     t_0 = tf.zeros(shape = tf.shape(x_s_flat))

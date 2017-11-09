@@ -40,8 +40,15 @@ with tf.name_scope('data_flow'):
 with tf.name_scope('temp_loss'):
     use_temp_loss = tf.placeholder(tf.float32)
     output2_aft_flow = interpolate(ret2['output'], x_flow, y_flow, (height, width))
+    noblack_pix2_aft_flow = interpolate(1 - ret2['black_pix'], x_flow, y_flow, (height, width))
     #output2_aft_flow = ret2['output']#28
-    temp_loss = tf.nn.l2_loss(ret1['output'] - output2_aft_flow) / batch_size * use_temp_loss
+    temp_err = ret1['output'] - output2_aft_flow
+    noblack = (1 - ret1['black_pix']) * noblack_pix2_aft_flow
+    temp_err = temp_err * noblack
+    show_image('err_temp', temp_err * temp_err)
+    temp_loss = tf.reduce_sum(tf.reduce_sum(temp_err * temp_err, [1, 2, 3]) / 
+            (tf.reduce_sum(noblack, [1, 2, 3]) + 1e-8), [0]) / batch_size * use_temp_loss
+    #temp_loss = tf.nn.l2_loss(temp_err) / batch_size * use_temp_loss
 
 with tf.name_scope('errors'):
     show_image('error_temp', tf.abs(ret1['output'] - output2_aft_flow))
@@ -122,6 +129,10 @@ with sv.managed_session(config=tf.ConfigProto(gpu_options = tf.GPUOptions(per_pr
             use_black = 1
         else:
             use_black = 0
+        if (i <= do_theta_only_iter):
+            theta_only = 1
+        else:
+            theta_only = 0
         if i % disp_freq == 0:
             print('==========================')
             print('read data time:' + str(tot_time / disp_freq) + 's')
@@ -129,7 +140,7 @@ with sv.managed_session(config=tf.ConfigProto(gpu_options = tf.GPUOptions(per_pr
             tot_train_time = 0
             tot_time = 0
             time_start = time.time()
-            loss, summary, bp = sess.run([total_loss, merged, ret1['black_pos']],
+            loss, summary = sess.run([total_loss, merged],
                             feed_dict={
                                 ret1['x_tensor']: batch_x1s,
                                 ret1['y']: batch_y1s,
@@ -140,9 +151,10 @@ with sv.managed_session(config=tf.ConfigProto(gpu_options = tf.GPUOptions(per_pr
                                 ret2['use_theta_loss']: use_theta,
                                 use_temp_loss: use_temp,
                                 ret1['use_black_loss']: use_black,
-                                ret2['use_black_loss']: use_black
+                                ret2['use_black_loss']: use_black,
+                                ret1['use_theta_only']: theta_only,
+                                ret2['use_theta_only']: theta_only
                             })
-            print(bp)
             sv.summary_writer.add_summary(summary, i)
             print('Iteration: ' + str(i) + ' Loss: ' + str(loss))
             lr = sess.run(learning_rate)
@@ -166,7 +178,9 @@ with sv.managed_session(config=tf.ConfigProto(gpu_options = tf.GPUOptions(per_pr
                                 ret2['use_theta_loss']: use_theta,
                                 use_temp_loss: use_temp,
                                 ret1['use_black_loss']: use_black,
-                                ret2['use_black_loss']: use_black
+                                ret2['use_black_loss']: use_black,
+                                ret1['use_theta_only']: theta_only,
+                                ret2['use_theta_only']: theta_only
                             })
 
                 sum_test_loss += loss
@@ -193,7 +207,9 @@ with sv.managed_session(config=tf.ConfigProto(gpu_options = tf.GPUOptions(per_pr
                         ret2['use_theta_loss']: use_theta,
                         use_temp_loss: use_temp,
                         ret1['use_black_loss']: use_black,
-                        ret2['use_black_loss']: use_black
+                        ret2['use_black_loss']: use_black,
+                        ret1['use_theta_only']: theta_only,
+                        ret2['use_theta_only']: theta_only
                     })
         t_e = time.time()
         tot_train_time += t_e - t_s
