@@ -175,7 +175,7 @@ def transformer(U, theta, out_size, name='SpatialTransformer', **kwargs):
             t_0 = tf.zeros(shape = tf.shape(z_s_flat))      
 
             sign_z_flat = tf.where(z_s_flat >= 0, t_1, t_0) * 2 - 1
-            z_s_flat = tf.reshape(z_s, [-1]) + sign_z_flat * 1e-5
+            z_s_flat = tf.reshape(z_s, [-1]) + sign_z_flat * 1e-8
             x_s_flat = tf.reshape(x_s, [-1]) / z_s_flat
             y_s_flat = tf.reshape(y_s, [-1]) / z_s_flat
 

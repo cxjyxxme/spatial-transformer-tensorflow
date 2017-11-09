@@ -8,7 +8,7 @@ checkpoint_file = 'data_video/resnet_v1_50.ckpt'
 
 inputs = tf.placeholder(tf.float32, [None, 288, 512, 15])
 with slim.arg_scope(resnet_v2.resnet_arg_scope()):
-    net, end_points = resnet_v2.resnet_v2_101(inputs, 1000, is_training=True, output_stride=32)
+    net, end_points = resnet_v2.resnet_v2_50(inputs, global_pool = False, is_training=True, output_stride=32)
 print(end_points)
 merged = tf.summary.merge_all()
 init_all = tf.initialize_all_variables()

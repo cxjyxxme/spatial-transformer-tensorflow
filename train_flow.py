@@ -21,13 +21,18 @@ from resnet import *
 import get_data_flow
 from config import *
 import time
-import s_net
+#import s_net
+import s_net_new as s_net
 from tensorflow.python.client import timeline
+slim = tf.contrib.slim
 
 def show_image(name, img, min_v = 0, max_v = 1):
     img_ = tf.pad(img, [[0, 0], [1, 1], [1, 1], [0, 0]], constant_values = max_v)
     img_ = tf.pad(img_, [[0, 0], [1, 1], [1, 1], [0, 0]], constant_values = min_v)
     tf.summary.image(name, img_)
+
+def name_in_checkpoint(var):
+    return var.op.name[18:]
 
 ret1 = s_net.inference_stable_net(False)
 ret2 = s_net.inference_stable_net(True)
@@ -96,18 +101,26 @@ with tf.name_scope('datas'):
                                                 batch_size=batch_size, capacity=120,
                                                 min_after_dequeue=80, num_threads=10)
 
+checkpoint_file = 'data_video/resnet_v2_50.ckpt'
+vtr = slim.get_variables_to_restore(exclude=['stable_net/resnet/resnet_v2_50/conv1', 'stable_net/resnet/fc'])
+vtr = [v for v in vtr if ((not ('Adam' in v.op.name)) and (len(v.op.name) > 18))]
+vtr = {name_in_checkpoint(var):var for var in vtr}
+#print (vtr)
+#variables_to_restore = slim.get_model_variables()
+#variables_to_restore = {name_in_checkpoint(var):var for var in variables_to_restore}
+restorer = tf.train.Saver(vtr)
+
 merged = tf.summary.merge_all()
 test_merged = tf.summary.merge_all("test")
 saver = tf.train.Saver()
-init_all = tf.initialize_all_variables()
+#init_all = tf.initialize_all_variables()
 run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
 run_metadata = tf.RunMetadata()
 sv = tf.train.Supervisor(logdir=log_dir, save_summaries_secs=0, saver=None)
 with sv.managed_session(config=tf.ConfigProto(gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.9))) as sess:
-    sess.run(init_all)
-    #sess.run(tf.initialize_local_variables())
+    #sess.run(init_all)
     threads = tf.train.start_queue_runners(sess=sess)
-
+    restorer.restore(sess, checkpoint_file)
     time_start = time.time()
     tot_time = 0
     tot_train_time = 0
