@@ -13,9 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 import tensorflow as tf
+from config import *
 
-
-def transformer(U, theta, out_size, name='SpatialTransformer', **kwargs):
+def transformer(U, theta, name='SpatialTransformer', **kwargs):
     """Spatial Transformer Layer
 
     Implements a spatial transformer layer as described in [1]_.
@@ -143,30 +143,32 @@ def transformer(U, theta, out_size, name='SpatialTransformer', **kwargs):
     def _transform2(theta, input_dim):
         with tf.variable_scope('_transform'):
             num_batch = tf.shape(input_dim)[0]
-            height = tf.shape(input_dim)[1]
-            width = tf.shape(input_dim)[2]
             num_channels = tf.shape(input_dim)[3]
             theta = tf.cast(theta, 'float32')
-
+            
+            img = tf.image.resize_bilinear(theta, [height, width], align_corners=True)
+            x_s_flat = tf.reshape(tf.slice(img, [0, 0, 0, 0], [-1, -1, -1, 1]), [-1])
+            y_s_flat = tf.reshape(tf.slice(img, [0, 0, 0, 1], [-1, -1, -1, 1]), [-1])
+            '''
             grid = _meshgrid(height, width)
             grid = tf.expand_dims(grid, 0)
             grid = tf.reshape(grid, [-1])
             grid = tf.tile(grid, tf.stack([num_batch]))
             grid = tf.reshape(grid, tf.stack([num_batch, 3, -1]))
 
-            with tf.name_scope('get xy'):
+            with tf.name_scope('get_xy'):
                 for h in range(height):
                     with tf.name_scope('h_' + str(h)):
                         for w in range(grid_w):
                             with tf.name_scope('w_' + str(w)):
-                                theta_ = tf.slice(theta, [0, h / grid_h, w, 0], [-1, 1, 1, -1])
+                                theta_ = tf.slice(theta, [0, h // (height // grid_h), w, 0], [-1, 1, 1, -1])
                                 theta_ = tf.reshape(theta_, [-1, 3, 3])
-                                grid_ = tf.slice(grid, [0, 0, h * width + w * (width / grid_w)], 
-                                        [-1, -1, width / grid_w])
+                                grid_ = tf.slice(grid, [0, 0, h * width + w * (width // grid_w)], 
+                                        [-1, -1, width // grid_w])
                                 T_g_ = tf.matmul(theta_, grid_)
                                 if ((h == 0) and (w == 0)):
                                     T_g = T_g_
-                                else
+                                else:
                                     T_g = tf.concat([T_g, T_g_], 2)
 
             x_s = tf.slice(T_g, [0, 0, 0], [-1, 1, -1])
@@ -181,22 +183,25 @@ def transformer(U, theta, out_size, name='SpatialTransformer', **kwargs):
             z_s_flat = tf.reshape(z_s, [-1]) + sign_z_flat * 1e-8
             x_s_flat = tf.reshape(x_s, [-1]) / z_s_flat
             y_s_flat = tf.reshape(y_s, [-1]) / z_s_flat
-
+            '''
+            t_1 = tf.ones(shape = tf.shape(x_s_flat))
+            t_0 = tf.zeros(shape = tf.shape(x_s_flat))    
             cond = tf.logical_or(tf.logical_or(tf.greater(t_1 * -1, x_s_flat), tf.greater(x_s_flat, t_1)), 
                                  tf.logical_or(tf.greater(t_1 * -1, y_s_flat), tf.greater(y_s_flat, t_1)))
             black_pix = tf.reshape(tf.where(cond, t_1, t_0), [num_batch, height, width])
             #black_pix = tf.reduce_sum(black_pix, [1])
 
+            out_size = (height, width)
             input_transformed = _interpolate(
                 input_dim, x_s_flat, y_s_flat,
                 out_size)
 
             output = tf.reshape(
-                input_transformed, tf.stack([num_batch, out_height, out_width, num_channels]))
+                input_transformed, tf.stack([num_batch, height, width, num_channels]))
             return output, black_pix
     with tf.variable_scope(name):
         #output = _transform(theta, U, out_size)
-        output = _transform2(theta, U, out_size)
+        output = _transform2(theta, U)
         return output
 
 

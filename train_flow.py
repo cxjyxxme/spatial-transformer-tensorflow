@@ -36,11 +36,12 @@ def name_in_checkpoint(var):
 
 ret1 = s_net.inference_stable_net(False)
 ret2 = s_net.inference_stable_net(True)
-
 with tf.name_scope('data_flow'):
     flow = tf.placeholder(tf.float32, [None, height, width, 2])
     x_flow = tf.slice(flow, [0, 0, 0, 0], [-1, -1, -1, 1])
     y_flow = tf.slice(flow, [0, 0, 0, 1], [-1, -1, -1, 1])
+
+
 
 with tf.name_scope('temp_loss'):
     use_temp_loss = tf.placeholder(tf.float32)
@@ -74,6 +75,8 @@ with tf.name_scope('train_loss'):
     tf.summary.scalar('black_loss', ret1['black_loss'] + ret2['black_loss'])
     tf.summary.scalar('theta_loss', ret1['theta_loss'] + ret2['theta_loss'])
     tf.summary.scalar('img_loss', ret1['img_loss'] + ret2['img_loss'])
+    tf.summary.scalar('distortion_loss', ret1['distortion_loss'] + ret2['distortion_loss'])
+    tf.summary.scalar('consistency_loss', ret1['consistency_loss'] + ret2['consistency_loss'])
     tf.summary.scalar('regu_loss', ret1['regu_loss'] + ret2['regu_loss'])
     tf.summary.scalar('temp_loss', temp_loss * temp_mul)
     tf.summary.scalar('total_loss', total_loss)
@@ -103,7 +106,9 @@ with tf.name_scope('datas'):
 
 checkpoint_file = 'data_video/resnet_v2_50.ckpt'
 vtr = slim.get_variables_to_restore(exclude=['stable_net/resnet/resnet_v2_50/conv1', 'stable_net/resnet/fc'])
-vtr = [v for v in vtr if ((not (('Adam' in v.op.name) or ('gen_theta' in v.op.name))) and (len(v.op.name) > 18))]
+vtr = [v for v in vtr if ((not (('Adam' in v.op.name) 
+        or ('gen_theta' in v.op.name)
+        or ('end_conv' in v.op.name))) and (len(v.op.name) > 18))]
 vtr = {name_in_checkpoint(var):var for var in vtr}
 #print (vtr)
 #variables_to_restore = slim.get_model_variables()
