@@ -23,6 +23,8 @@ from config import *
 import time
 from tensorflow.contrib.slim.nets import resnet_v2
 slim = tf.contrib.slim
+import utils
+logger = utils.get_logger()
 
 def get_4_pts(theta, batch_size):
     with tf.name_scope('get_4_pts'):
@@ -258,6 +260,23 @@ def get_resnet(x_tensor, reuse, is_training, x_batch_size):
             id_loss = tf.reduce_mean(tf.abs(theta)) * id_mul
     return theta, id_loss
 
+def warp_pts(pts, flow):
+    x = pts[:, :, 0]
+    x = tf.clip_by_value((x + 1) / 2 * width, 0, width - 1)
+    x = tf.cast(tf.round(x), tf.int32)
+    y = pts[:, :, 1]
+    y = tf.clip_by_value((y + 1) / 2 * height, 0, height - 1)
+    y = tf.cast(tf.round(y), tf.int32)
+
+    out = []
+    for i in range(batch_size):
+        flow_ = tf.reshape(flow[i, :, :, :], [-1, 2])
+        xy = x[i, :] + y[i, :] * width
+        temp = tf.gather(flow_, xy)
+        print(temp.shape)
+        out.append(tf.reshape(temp, [1, max_matches, 2]))
+    return tf.concat(out, 0)
+
 def inference_stable_net(reuse):
     with tf.variable_scope('stable_net'):
         with tf.name_scope('input'):
@@ -271,9 +290,11 @@ def inference_stable_net(reuse):
             x_batch_size = tf.shape(x_tensor)[0]
             x = tf.slice(x_tensor, [0, 0, 0, before_ch], [-1, -1, -1, 1])
             
-            for i in range(tot_ch):
-                temp = tf.slice(x_tensor, [0, 0, 0, i], [-1, -1, -1, 1])
-                tf.summary.image('x' + str(i), temp)
+            mask = tf.placeholder(tf.float32, [None, max_matches])
+            matches = tf.placeholder(tf.float32, [None, max_matches, 4])
+            #for i in range(tot_ch):
+            #    temp = tf.slice(x_tensor, [0, 0, 0, i], [-1, -1, -1, 1])
+            #    tf.summary.image('x' + str(i), temp)
 
         with tf.name_scope('label'):
             y = tf.placeholder(tf.float32, [None, height, width, 1])
@@ -286,11 +307,10 @@ def inference_stable_net(reuse):
         pts1, pts2 = get_4_pts(theta, x_batch_size)
         _, pts2_infer = get_4_pts(theta_infer, x_batch_size)
         with tf.name_scope('inference'):
-            h_trans_infer, black_pix_infer = transformer(x, pts2_infer)
+            h_trans_infer, black_pix_infer, _ = transformer(x, pts2_infer)
         with tf.name_scope('theta_loss'):
             use_theta_loss = tf.placeholder(tf.float32)
             theta_loss = id_loss #theta_loss * use_theta_loss + id_loss
-
         with tf.name_scope('black_loss'):
             use_black_loss = tf.placeholder(tf.float32)
             black_pos = get_black_pos(pts1)
@@ -307,7 +327,19 @@ def inference_stable_net(reuse):
         consistency_loss = get_consistency_loss(pts2)
         #neighbor_loss = get_neighbor_loss(pts)
 
-        h_trans, black_pix = transformer(x, pts2)
+        h_trans, black_pix, flow = transformer(x, pts2)
+
+        with tf.name_scope('feature_loss'):
+            use_feature_loss = tf.placeholder(tf.float32)
+            stable_pts = matches[:, :, :2]
+            unstable_pts = matches[:, :, 2:]
+            stable_warpped = warp_pts(stable_pts, flow)
+            before_mask = tf.reduce_sum(tf.abs(stable_warpped - unstable_pts), 2)
+            assert(before_mask.shape[1] == max_matches)
+            after_mask = tf.reduce_sum(before_mask * mask, axis=1) / (tf.maximum(tf.reduce_sum(mask, axis=1), 1))
+            feature_loss = tf.reduce_mean(after_mask)
+
+
         tf.summary.image('output', h_trans)
         tf.add_to_collection('output', h_trans)
         with tf.name_scope('img_loss'):
@@ -321,7 +353,8 @@ def inference_stable_net(reuse):
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies([tf.group(*update_ops)]):
             total_loss = theta_loss * theta_mul + ((1 - use_theta_only) * 
-            (img_loss * img_mul + regu_loss * regu_mul + black_pos_loss * black_mul + distortion_loss * distortion_mul + consistency_loss * consistency_mul))
+            (img_loss * img_mul + regu_loss * regu_mul + black_pos_loss * black_mul + distortion_loss * distortion_mul + 
+             consistency_loss * consistency_mul + feature_loss * feature_mul))
         
     ret = {}
     ret['error'] = tf.abs(h_trans - y)
@@ -331,6 +364,10 @@ def inference_stable_net(reuse):
     ret['black_loss'] = black_pos_loss * black_mul
     ret['distortion_loss'] = distortion_loss * distortion_mul
     ret['consistency_loss'] = consistency_loss * consistency_mul
+    ret['feature_loss'] = feature_loss * feature_mul
+    ret['mask'] = mask
+    ret['matches'] = matches
+    ret['feature_loss'] = feature_loss * feature_mul
     ret['img_loss'] = img_loss * img_mul
     ret['regu_loss'] = regu_loss * regu_mul
     ret['x_tensor'] = x_tensor

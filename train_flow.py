@@ -18,13 +18,18 @@ import numpy as np
 from tf_utils import weight_variable, bias_variable, dense_to_one_hot
 import cv2
 from resnet import *
-import get_data_flow
+import get_data_flow_ as get_data_flow
 from config import *
 import time
+import argparse
 #import s_net
 import s_net_bundle as s_net
 from tensorflow.python.client import timeline
 slim = tf.contrib.slim
+parser = argparse.ArgumentParser()
+parser.add_argument('--gpu_memory_fraction', type=float, default=0.8)
+parser.add_argument('--restore', action='store_true')
+args = parser.parse_args()
 
 def show_image(name, img, min_v = 0, max_v = 1):
     img_ = tf.pad(img, [[0, 0], [1, 1], [1, 1], [0, 0]], constant_values = max_v)
@@ -77,6 +82,7 @@ with tf.name_scope('train_loss'):
     tf.summary.scalar('img_loss', ret1['img_loss'] + ret2['img_loss'])
     tf.summary.scalar('distortion_loss', ret1['distortion_loss'] + ret2['distortion_loss'])
     tf.summary.scalar('consistency_loss', ret1['consistency_loss'] + ret2['consistency_loss'])
+    tf.summary.scalar('feature_loss', ret1['feature_loss'] + ret2['feature_loss'])
     tf.summary.scalar('regu_loss', ret1['regu_loss'] + ret2['regu_loss'])
     tf.summary.scalar('temp_loss', temp_loss * temp_mul)
     tf.summary.scalar('total_loss', total_loss)
@@ -88,7 +94,7 @@ learning_rate = tf.train.exponential_decay(initial_learning_rate,
 opt = tf.train.AdamOptimizer(learning_rate)
 optimizer = opt.minimize(total_loss, global_step=global_step)
 
-
+'''
 with tf.name_scope('datas'):
     data_x1, data_y1, data_x2, data_y2, data_flow = get_data_flow.read_and_decode(
             data_dir + "train/", int(training_iter * batch_size / train_data_size) + 2)
@@ -103,6 +109,27 @@ with tf.name_scope('datas'):
                                                 [test_x1, test_y1, test_x2, test_y2, test_flow],
                                                 batch_size=batch_size, capacity=120,
                                                 min_after_dequeue=80, num_threads=10)
+'''
+with tf.name_scope('datas'):
+    data_x1, data_y1, data_x2, data_y2, data_flow, \
+        data_feature_matches1, data_mask1, data_feature_matches2, data_mask2 = get_data_flow.read_and_decode(
+            data_dir + "train/", int(training_iter * batch_size / train_data_size) + 2)
+    test_x1, test_y1, test_x2, test_y2, test_flow, \
+        test_feature_matches1, test_mask1, test_feature_matches2, test_mask2 = get_data_flow.read_and_decode(
+            data_dir + "test/", int(training_iter * batch_size * test_batches / test_data_size / test_freq) + 2)
+
+    x1_batch, y1_batch, x2_batch, y2_batch, flow_batch,\
+        feature_matches1_batch, mask1_batch, feature_matches2_batch, mask2_batch = tf.train.shuffle_batch(
+                                                [data_x1, data_y1, data_x2, data_y2, data_flow,
+                                                data_feature_matches1, data_mask1, data_feature_matches2, data_mask2],
+                                                batch_size=batch_size, capacity=120,
+                                                min_after_dequeue=80, num_threads=10)
+    test_x1_batch, test_y1_batch, test_x2_batch, test_y2_batch, test_flow_batch,\
+        test_feature_matches1_batch, test_mask1_batch, test_feature_matches2_batch, test_mask2_batch = tf.train.shuffle_batch(
+                                                [test_x1, test_y1, test_x2, test_y2, test_flow,
+                                                test_feature_matches1, test_mask1, test_feature_matches2, test_mask2],
+                                                batch_size=batch_size, capacity=120,
+						min_after_dequeue=80, num_threads=10)
 
 checkpoint_file = 'data_video/resnet_v2_50.ckpt'
 vtr = slim.get_variables_to_restore(exclude=['stable_net/resnet/resnet_v2_50/conv1', 'stable_net/resnet/fc'])
@@ -115,6 +142,7 @@ vtr = {name_in_checkpoint(var):var for var in vtr}
 #variables_to_restore = {name_in_checkpoint(var):var for var in variables_to_restore}
 restorer = tf.train.Saver(vtr)
 
+assign_op = tf.assign(global_step, start_step)
 merged = tf.summary.merge_all()
 test_merged = tf.summary.merge_all("test")
 saver = tf.train.Saver()
@@ -122,17 +150,28 @@ saver = tf.train.Saver()
 run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
 run_metadata = tf.RunMetadata()
 sv = tf.train.Supervisor(logdir=log_dir, save_summaries_secs=0, saver=None)
-with sv.managed_session(config=tf.ConfigProto(gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.9))) as sess:
+with sv.managed_session(config=tf.ConfigProto(gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.8))) as sess:
     #sess.run(init_all)
     threads = tf.train.start_queue_runners(sess=sess)
-    restorer.restore(sess, checkpoint_file)
+
+    if args.restore: 
+        saver.restore(sess, tf.train.latest_checkpoint(restore_model_dir))
+        print('restoring {}'.format(tf.train.latest_checkpoint(restore_model_dir)))
+        sess.run(assign_op)
+    else:
+        restorer.restore(sess, checkpoint_file)
+    st_step = max(0,sess.run(global_step))
+    sv.summary_writer.add_session_log(tf.SessionLog(status=tf.SessionLog.START), global_step=st_step-1)
+
     time_start = time.time()
     tot_time = 0
     tot_train_time = 0
 
-    for i in range(training_iter):
-        batch_x1s, batch_y1s, batch_x2s, batch_y2s, batch_flows = sess.run(
-            [x1_batch, y1_batch, x2_batch, y2_batch, flow_batch])
+    for i in range(st_step, training_iter):
+        batch_x1s, batch_y1s, batch_x2s, batch_y2s, batch_flows, batch_feature_matches1, batch_mask1, batch_feature_matches2, batch_mask2 = sess.run(
+            [x1_batch, y1_batch, x2_batch, y2_batch, flow_batch, feature_matches1_batch, mask1_batch, feature_matches2_batch, mask2_batch])
+        #batch_x1s, batch_y1s, batch_x2s, batch_y2s, batch_flows = sess.run(
+        #    [x1_batch, y1_batch, x2_batch, y2_batch, flow_batch])
         if (i > no_theta_iter):
             use_theta = 0
         else:
@@ -171,7 +210,11 @@ with sv.managed_session(config=tf.ConfigProto(gpu_options = tf.GPUOptions(per_pr
                                 ret1['use_black_loss']: use_black,
                                 ret2['use_black_loss']: use_black,
                                 ret1['use_theta_only']: theta_only,
-                                ret2['use_theta_only']: theta_only
+                                ret2['use_theta_only']: theta_only,
+                                ret1['mask']: batch_mask1,
+                                ret1['matches']: batch_feature_matches1,
+                                ret2['mask']: batch_mask2,
+                                ret2['matches']: batch_feature_matches2                                
                             })
             sv.summary_writer.add_summary(summary, i)
             print('Iteration: ' + str(i) + ' Loss: ' + str(loss))
@@ -185,8 +228,8 @@ with sv.managed_session(config=tf.ConfigProto(gpu_options = tf.GPUOptions(per_pr
         if i % test_freq == 0:
             sum_test_loss = 0.0
             for j in range(test_batches):
-                test_batch_x1s, test_batch_y1s, test_batch_x2s, test_batch_y2s, test_batch_flows = sess.run(
-                    [test_x1_batch, test_y1_batch, test_x2_batch, test_y2_batch, test_flow_batch])
+                test_batch_x1s, test_batch_y1s, test_batch_x2s, test_batch_y2s, test_batch_flows , test_batch_feature_matches1, test_batch_mask1, test_batch_feature_matches2, test_batch_mask2 = sess.run(
+                    [test_x1_batch, test_y1_batch, test_x2_batch, test_y2_batch, test_flow_batch, test_feature_matches1_batch, test_mask1_batch, test_feature_matches2_batch, test_mask2_batch])
                 loss = sess.run(total_loss,
                             feed_dict={
                                 ret1['x_tensor']: test_batch_x1s,
@@ -200,7 +243,11 @@ with sv.managed_session(config=tf.ConfigProto(gpu_options = tf.GPUOptions(per_pr
                                 ret1['use_black_loss']: use_black,
                                 ret2['use_black_loss']: use_black,
                                 ret1['use_theta_only']: theta_only,
-                                ret2['use_theta_only']: theta_only
+                                ret2['use_theta_only']: theta_only,
+                                ret1['mask']: batch_mask1,
+                                ret1['matches']: batch_feature_matches1,
+                                ret2['mask']: batch_mask2,
+                                ret2['matches']: batch_feature_matches2
                             })
 
                 sum_test_loss += loss
@@ -227,7 +274,11 @@ with sv.managed_session(config=tf.ConfigProto(gpu_options = tf.GPUOptions(per_pr
                         ret1['use_black_loss']: use_black,
                         ret2['use_black_loss']: use_black,
                         ret1['use_theta_only']: theta_only,
-                        ret2['use_theta_only']: theta_only
+                        ret2['use_theta_only']: theta_only,
+                        ret1['mask']: batch_mask1,
+                        ret1['matches']: batch_feature_matches1,
+                        ret2['mask']: batch_mask2,
+                        ret2['matches']: batch_feature_matches2
                     })
         t_e = time.time()
         tot_train_time += t_e - t_s

@@ -198,7 +198,7 @@ def transformer(U, theta, name='SpatialTransformer', **kwargs):
 
             output = tf.reshape(
                 input_transformed, tf.stack([num_batch, height, width, num_channels]))
-            return output, black_pix
+            return output, black_pix, img
     with tf.variable_scope(name):
         #output = _transform(theta, U, out_size)
         output = _transform2(theta, U)
