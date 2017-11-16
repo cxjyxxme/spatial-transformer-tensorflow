@@ -10,33 +10,29 @@ start_with_stable = False#True
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.1)
 sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
 
-model_name = 'model-75000'
+model_name = 'model-59000'
 new_saver = tf.train.import_meta_graph(model_dir + model_name + '.meta')
 new_saver.restore(sess, model_dir + model_name)
 graph = tf.get_default_graph()
 x_tensor = graph.get_tensor_by_name('stable_net/input/x_tensor:0')
 #output = graph.get_tensor_by_name('stable_net/SpatialTransformer/_transform/Reshape_7:0')
 #black_pix = graph.get_tensor_by_name('stable_net/SpatialTransformer/_transform/Reshape_6:0')
-output = graph.get_tensor_by_name('stable_net/inference/SpatialTransformer/_transform/Reshape_3:0')
-black_pix = graph.get_tensor_by_name('stable_net/inference/SpatialTransformer/_transform/Reshape_2:0')
+output = graph.get_tensor_by_name('stable_net/inference/SpatialTransformer/_transform/Reshape_7:0')
+black_pix = graph.get_tensor_by_name('stable_net/inference/SpatialTransformer/_transform/Reshape_6:0')
 #black_pix = graph.get_tensor_by_name('stable_net/img_loss/StopGradient:0')
 
 #list_f = open('data_video/test_list_deploy', 'r')
-list_f = open('data_video/test_list', 'r')
+list_f = open('/home/ubuntu/Regular/Regular/list.txt', 'r')
 temp = list_f.read()
 video_list = temp.split('\n')
-
-list_f = open('data_video/train_list_deploy', 'r')
-temp = list_f.read()
-video_list.extend(temp.split('\n'))
 
 for video_name in video_list:
     if (video_name == ""):
         continue
     print(video_name)
-    unstable_cap = cv2.VideoCapture('data_video/unstable/' + video_name)  
+    unstable_cap = cv2.VideoCapture('/home/ubuntu/Regular/Regular/unstable/' + video_name)  
     fps = unstable_cap.get(cv2.CAP_PROP_FPS)
-    print('data_video/unstable/' + video_name)
+    print('/home/ubuntu/Regular/Regular/unstable/' + video_name)
     videoWriter = cv2.VideoWriter('data_video/output/' + video_name, 
             cv2.VideoWriter_fourcc('M','J','P','G'), fps, (width, height))  
     before_frames = []
@@ -54,7 +50,7 @@ for video_name in video_list:
         temp = ((np.reshape(temp, (height, width)) + 0.5) * 255).astype(np.uint8)
         videoWriter.write(cv2.cvtColor(temp, cv2.COLOR_GRAY2BGR))
     else:
-        stable_cap = cv2.VideoCapture('data_video/stable/' + video_name) 
+        stable_cap = cv2.VideoCapture('/home/ubuntu/Regular/Regular/stable/' + video_name) 
         for i in range(before_ch):
             ret, frame = unstable_cap.read()
             ret, frame = stable_cap.read()

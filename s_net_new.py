@@ -118,11 +118,14 @@ def inference_stable_net(reuse):
             x_tensor = tf.placeholder(tf.float32, [None, height, width, tot_ch], name = 'x_tensor')
             x_batch_size = tf.shape(x_tensor)[0]
             x = tf.slice(x_tensor, [0, 0, 0, before_ch], [-1, -1, -1, 1])
-            
+             
+            mask = tf.placeholder(tf.float32, [None, max_matches])
+            matches = tf.placeholder(tf.float32, [None, max_matches, 4])
+            '''
             for i in range(tot_ch):
                 temp = tf.slice(x_tensor, [0, 0, 0, i], [-1, -1, -1, 1])
                 tf.summary.image('x' + str(i), temp)
-
+            '''
         with tf.name_scope('label'):
             y = tf.placeholder(tf.float32, [None, height, width, 1])
             x4 = tf.slice(y, [0, 0, 0, 0], [-1, -1, -1, 1])
@@ -142,8 +145,9 @@ def inference_stable_net(reuse):
             black_pos = black_pos * use_black_loss
 
 
-        regu_loss = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
-        regu_loss = tf.add_n(regu_loss)
+        #regu_loss = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+        #regu_loss = tf.add_n(regu_loss)
+        regu_loss = tf.add_n(slim.losses.get_regularization_losses())
         h_trans, black_pix = transformer(x, theta, out_size)
         black_pos_loss = tf.reduce_mean(black_pos)
         tf.add_to_collection('output', h_trans)
@@ -184,4 +188,6 @@ def inference_stable_net(reuse):
     ret['total_loss'] = total_loss
     ret['use_theta_loss'] = use_theta_loss
     ret['use_black_loss'] = use_black_loss
+    ret['mask'] = mask
+    ret['matches'] = matches
     return ret
