@@ -142,6 +142,7 @@ def inference_stable_net(reuse):
             use_black_loss = tf.placeholder(tf.float32)
             theta_loss, black_pos = get_theta_black_loss(theta)
             theta_loss = id_loss #theta_loss * use_theta_loss + id_loss
+            black_pos = black_pos * black_pos#L2loss
             black_pos = black_pos * use_black_loss
 
 
