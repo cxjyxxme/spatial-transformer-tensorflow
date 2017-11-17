@@ -149,6 +149,7 @@ def inference_stable_net(reuse):
         #regu_loss = tf.add_n(regu_loss)
         regu_loss = tf.add_n(slim.losses.get_regularization_losses())
         h_trans, black_pix = transformer(x, theta, out_size)
+        tf.summary.image('output', h_trans)
         black_pos_loss = tf.reduce_mean(black_pos)
         tf.add_to_collection('output', h_trans)
         with tf.name_scope('img_loss'):
